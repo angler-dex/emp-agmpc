@@ -2,6 +2,8 @@
 #define NETIOMP_H__
 #include <emp-tool/emp-tool.h>
 #include "cmpc_config.h"
+#include <stdio.h>
+#include <fstream>
 using namespace emp;
 
 template<int nP>
@@ -45,6 +47,40 @@ class NetIOMP { public:
 			}
 		}
 	}
+	NetIOMP(int party, std::string ipFilePath, int portOffset) {
+		this->party = party;
+		memset(sent, false, nP+1);
+
+        std::ifstream infile(ipFilePath);
+        string fileIP[nP+1];
+        int filePorts[nP+1];
+        int i = 1;
+        string ip, port;
+        while (getline(infile,ip,':')) {
+            getline(infile,port);
+            fileIP[i] = ip;
+            filePorts[i] = atoi(port.c_str()) + portOffset;
+            i++;
+            if (i > nP) break;
+        }
+
+		for(int i = 1; i <= nP; ++i)for(int j = 1; j <= nP; ++j)if(i < j){
+			if(i == party) {
+				ios[j] = new NetIO(fileIP[j].c_str(), filePorts[j]+2*(i), true);
+				ios[j]->set_nodelay();	
+
+				ios2[j] = new NetIO(nullptr, filePorts[i]+2*(j)+1, true);
+				ios2[j]->set_nodelay();	
+			} else if(j == party) {
+				ios[i] = new NetIO(nullptr, filePorts[j]+2*(i), true);
+				ios[i]->set_nodelay();	
+
+				ios2[i] = new NetIO(fileIP[i].c_str(), filePorts[i]+2*(j)+1, true);
+				ios2[i]->set_nodelay();	
+			}
+        }
+    }
+
 	int64_t count() {
 		int64_t res = 0;
 #ifdef COUNT_IO
