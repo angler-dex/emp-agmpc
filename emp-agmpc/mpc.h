@@ -470,7 +470,7 @@ ret.get();
 		else return "F";
 	}
 
-	void online (bool * input, bool * output, int* start, int* end) {
+	void online (bool * input, bool * output, int* start, int* end, bool broadcast_output = false) {
 		bool * mask_input = new bool[cf->num_wire];
 		bool * input_mask[nP+1];
 		for(int i = 0; i <= nP; ++i) input_mask[i] = new bool[end[party] - start[party]];
@@ -480,7 +480,7 @@ ret.get();
 		vector<future<bool>> res;
 		for(int i = 1; i <= nP; ++i) for(int j = 1; j<= nP; ++j) if( (i < j) and (i == party or j == party) ) {
 			int party2 = i + j - party;
-			res.push_back(pool->enqueue([this, start, end, mask_input, party2]() {
+			res.push_back(pool->enqueue([this, start, end, party2]() {
 				char dig[Hash::DIGEST_SIZE];
 				io->send_data(party2, value+start[party2], end[party2]-start[party2]);
 				emp::Hash::hash_once(dig, mac[party2]+start[party2], (end[party2]-start[party2])*sizeof(block));
@@ -585,30 +585,147 @@ ret.get();
 				}
 			}
 		}
-		if(party != 1) {
-			io->send_data(1, value+cf->num_wire - cf->n3, cf->n3);
-			io->flush(1);
-		} else {
-			vector<future<void>> res;
-			bool * tmp[nP+1];
-			for(int i = 2; i <= nP; ++i) 
-				tmp[i] = new bool[cf->n3];
-			for(int i = 2; i <= nP; ++i) {
-				int party2 = i;
-				res.push_back(pool->enqueue([this, tmp, party2]() {
-					io->recv_data(party2, tmp[party2], cf->n3);
-				}));
-			}
-			joinNclean(res);
-			for(int i = 0; i < cf->n3; ++i)
-				for(int j = 2; j <= nP; ++j)
-					mask_input[cf->num_wire - cf->n3 + i] = tmp[j][i] != mask_input[cf->num_wire - cf->n3 + i];
-			for(int i = 0; i < cf->n3; ++i)
-					mask_input[cf->num_wire - cf->n3 + i] = value[cf->num_wire - cf->n3 + i] != mask_input[cf->num_wire - cf->n3 + i];
 
-			for(int i = 2; i <= nP; ++i) delete[] tmp[i];
-			memcpy(output, mask_input + cf->num_wire - cf->n3, cf->n3);
-		}
+		if(broadcast_output) {
+            // party 1 sends masked circuit evaluation result
+		    if(party != 1) {
+			    io->recv_data(1, mask_input + cf->num_wire - cf->n3, cf->n3);
+		    } else {
+		    	for(int i = 2; i <= nP; ++i)
+		    	    io->send_data(i, mask_input + cf->num_wire - cf->n3, cf->n3);
+            }
+
+            // everyone broadcasts output (no checking)
+		    char *outputVals[nP+1];
+            for(int i = 0; i <= nP; ++i)
+		        outputVals[i] = new char[cf->n3];
+
+		    for(int i = 1; i <= nP; ++i) for(int j = 1; j<= nP; ++j) if( (i < j) and (i == party or j == party) ) {
+		    	int party2 = i + j - party;
+		    	res.push_back(pool->enqueue([this, party2]() -> bool {
+		    		io->send_data(party2, value + cf->num_wire - cf->n3, cf->n3);
+		    		return false;
+		    	}));
+		    	res.push_back(pool->enqueue([this, outputVals, party2]() -> bool {
+		    		io->recv_data(party2, outputVals[party2], cf->n3);
+                    return false;
+		    	}));
+            }
+		    if(joinNcleanCheat(res)) error("output collection\n");
+
+		    for(int i = 0; i < cf->n3; ++i) {
+		    	for(int j = 1; j <= nP; ++j) {
+                    if (j == party)
+		    		    mask_input[cf->num_wire - cf->n3 + i] = value[cf->num_wire - cf->n3 + i] != mask_input[cf->num_wire - cf->n3 + i];
+                    else
+		    		    mask_input[cf->num_wire - cf->n3 + i] = outputVals[j][i] != mask_input[cf->num_wire - cf->n3 + i];
+                }
+            }
+		    memcpy(output, mask_input + cf->num_wire - cf->n3, cf->n3);
+
+
+            //// attempt to check macs - broken
+		    //block *tmp_macs[nP+1];
+		    //block *tmp_labels[nP+1];
+		    ////bool *tmp_mask_inputs[nP+1];
+            //for(int i = 0; i <= nP; ++i) {
+		    //    tmp_macs[i] = new block[cf->n3];
+		    //    tmp_labels[i] = new block[cf->n3];
+		    //    tmp_mask_inputs[i] = new bool[cf->n3];
+            //}
+            //std::mutex output_m;
+
+		    //for(int i = 1; i <= nP; ++i) for(int j = 1; j<= nP; ++j) if( (i < j) and (i == party or j == party) ) {
+		    //	int party2 = i + j - party;
+
+		    //	res.push_back(pool->enqueue([this, mask_input, party2]() -> bool {
+		    //	    io->send_data(party2, mac[party2] + cf->num_wire - cf->n3, cf->n3);
+		    //	    io->send_data(party2, labels + cf->num_wire - cf->n3, cf->n3);
+		    //	    io->send_data(party2, mask_input + cf->num_wire - cf->n3, cf->n3);
+		    //		//io->send_data(party2, value + cf->num_wire - cf->n3, cf->n3);
+		    //		return false;
+		    //	}));
+
+		    //	res.push_back(pool->enqueue([this, output, &output_m, tmp_macs, tmp_labels, tmp_mask_inputs, party2]() -> bool {
+		    //	    io->recv_data(party2, tmp_macs[party2] + cf->num_wire - cf->n3, cf->n3);
+		    //	    io->recv_data(party2, tmp_labels[party2] + cf->num_wire - cf->n3, cf->n3);
+		    //	    //io->recv_data(party2, mask_input + cf->num_wire - cf->n3, cf->n3);
+		    //		io->recv_data(party2, tmp_mask_inputs[party2], cf->n3);
+
+            //        for(int g = 0; g < cf->n3; ++g) {
+			//		    block tmp = tmp_macs[party2][g];
+			//		    tmp =  tmp & MASK;
+
+			//		    block ttt = key[party2][cf->num_wire - cf-> n3 + g] ^ fpre->Delta;
+			//		    ttt =  ttt & MASK;
+			//		    key[party2][cf->num_wire - cf-> n3 + g] = key[party2][cf->num_wire - cf-> n3 + g] & MASK;
+
+			//		    if(cmpBlock(&tmp, &key[party2][cf->num_wire - cf-> n3 + g], 1)) {
+			//		    	output[g] = false;
+            //            } else if(cmpBlock(&tmp, &ttt, 1)) {
+			//		    	output[g] = true;
+			//		    } else {
+            //                cout <<"no match output label! party2: "<<party2<<" gate: "<<g<<endl;
+            //                cout <<"tmp: " << tmp << endl;
+            //                cout <<"key: " << key[party2][cf->num_wire - cf-> n3 + g] << endl;
+            //                cout <<"ttt: " << ttt << endl;
+            //                return true;
+            //            }
+			//		    block mask_label = tmp_labels[party2][g];
+			//		    if(tmp_mask_inputs[party2][g])
+			//		    	mask_label = mask_label ^ fpre->Delta;
+			//		    mask_label = mask_label & MASK;
+			//		    block masked_labels = labels[cf->num_wire - cf-> n3 + g] & MASK;
+			//		    if(!cmpBlock(&mask_label, &masked_labels, 1)) {
+            //                cout <<"no match output label2! party2: "<<party2<<" gate: "<<g<<endl;
+            //                cout <<"mask_label: " << mask_label << endl;
+            //                cout <<"masked_labels: " << masked_labels << endl;
+            //                return true;
+            //            }
+
+            //            {
+            //                std::lock_guard<std::mutex> lg(output_m);
+			//		        output[g] = output[g] != tmp_mask_inputs[party2][g];
+			//		        output[g] = output[g] != getLSB(mac[party2][cf->num_wire - cf->n3 + g]);
+            //            }
+            //        }
+            //        return false;
+		    //	}));
+            //}
+		    //if(joinNcleanCheat(res)) error("output collection\n");
+
+            //for(int i = 0; i <= nP; ++i) {
+            //    delete[] tmp_macs[i];
+            //    delete[] tmp_labels[i];
+            //    delete[] tmp_mask_inputs[i];
+            //}
+
+		} else { // only alice gets output
+		    if(party != 1) {
+		    	io->send_data(1, value+cf->num_wire - cf->n3, cf->n3);
+		    	io->flush(1);
+		    } else {
+		    	vector<future<void>> res;
+		    	bool * tmp[nP+1];
+		    	for(int i = 2; i <= nP; ++i)
+		    		tmp[i] = new bool[cf->n3];
+		    	for(int i = 2; i <= nP; ++i) {
+		    		int party2 = i;
+		    		res.push_back(pool->enqueue([this, tmp, party2]() {
+		    			io->recv_data(party2, tmp[party2], cf->n3);
+		    		}));
+		    	}
+		    	joinNclean(res);
+		    	for(int i = 0; i < cf->n3; ++i)
+		    		for(int j = 2; j <= nP; ++j)
+		    			mask_input[cf->num_wire - cf->n3 + i] = tmp[j][i] != mask_input[cf->num_wire - cf->n3 + i];
+		    	for(int i = 0; i < cf->n3; ++i)
+		    			mask_input[cf->num_wire - cf->n3 + i] = value[cf->num_wire - cf->n3 + i] != mask_input[cf->num_wire - cf->n3 + i];
+
+		    	for(int i = 2; i <= nP; ++i) delete[] tmp[i];
+		    	memcpy(output, mask_input + cf->num_wire - cf->n3, cf->n3);
+		    }
+        }
 		delete[] mask_input;
 	}
 
