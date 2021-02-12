@@ -98,7 +98,6 @@ class ABitMP { public:
 	}
 
 	void check1(block * MAC[nP+1], block * KEY[nP+1], bool* data, int length) {
-        length -= length%2;
 		block seed = sampleRandom(io, &prg, pool, party);
 		PRG prg2(&seed);
 		uint8_t * tmp;
@@ -196,7 +195,6 @@ class ABitMP { public:
 	}
 
 	void check2(block * MAC[nP+1], block * KEY[nP+1], bool* data, int length) {
-        length -= length%2;
 		//last 2*ssp are garbage already.
 		block * Ks[2], *Ms[nP+1][nP+1];
 		block * KK[nP+1];
