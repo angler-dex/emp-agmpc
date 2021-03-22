@@ -470,8 +470,10 @@ ret.get();
 		else return "F";
 	}
 
+	bool *mask_input;
+	char *outputVals[nP+1];
 	void online (bool * input, bool * output, int* start, int* end, bool broadcast_output = false) {
-		bool * mask_input = new bool[cf->num_wire];
+		mask_input = new bool[cf->num_wire];
 		bool * input_mask[nP+1];
 		for(int i = 0; i <= nP; ++i) input_mask[i] = new bool[end[party] - start[party]];
 		memcpy(input_mask[party], value+start[party], end[party] - start[party]);
@@ -517,16 +519,16 @@ ret.get();
 			vector<future<void>> res;
 			for(int i = 2; i <= nP; ++i) {
 				int party2 = i;
-				res.push_back(pool->enqueue([this, mask_input, start, end , party2]() {
-					io->recv_data(party2, mask_input+start[party2], end[party2] - start[party2]);
+				res.push_back(pool->enqueue([this, /*mask_input,*/ start, end , party2]() {
+					io->recv_data(party2, this->mask_input+start[party2], end[party2] - start[party2]);
 				}));
 			}
 			joinNclean(res);
 			memcpy(mask_input, input_mask[0], end[1]-start[1]);
 			for(int i = 2; i <= nP; ++i) {
 				int party2 = i;
-				res.push_back(pool->enqueue([this, mask_input, party2]() {
-					io->send_data(party2, mask_input, num_in);
+				res.push_back(pool->enqueue([this, /*mask_input,*/ party2]() {
+					io->send_data(party2, this->mask_input, num_in);
 					io->flush(party2);
 				}));
 			}
@@ -588,15 +590,15 @@ ret.get();
 
 		if(broadcast_output) {
             // party 1 sends masked circuit evaluation result
-		    if(party != 1) {
-			    io->recv_data(1, mask_input + cf->num_wire - cf->n3, cf->n3);
-		    } else {
-		    	for(int i = 2; i <= nP; ++i)
-		    	    io->send_data(i, mask_input + cf->num_wire - cf->n3, cf->n3);
-            }
+		    //if(party != 1) {
+			//    io->recv_data(1, mask_input + cf->num_wire - cf->n3, cf->n3);
+		    //} else {
+		    //	for(int i = 2; i <= nP; ++i)
+		    //	    io->send_data(i, mask_input + cf->num_wire - cf->n3, cf->n3);
+            //}
 
-            // everyone broadcasts output (no checking)
-		    char *outputVals[nP+1];
+            // everyone broadcasts output (no mac checking).
+            // must run before winner is selected to prevent malicious abort
             for(int i = 0; i <= nP; ++i)
 		        outputVals[i] = new char[cf->n3];
 
@@ -606,22 +608,26 @@ ret.get();
 		    		io->send_data(party2, value + cf->num_wire - cf->n3, cf->n3);
 		    		return false;
 		    	}));
-		    	res.push_back(pool->enqueue([this, outputVals, party2]() -> bool {
-		    		io->recv_data(party2, outputVals[party2], cf->n3);
+		    	res.push_back(pool->enqueue([this, /*outputVals,*/ party2]() -> bool {
+		    		io->recv_data(party2, this->outputVals[party2], cf->n3);
                     return false;
 		    	}));
             }
 		    if(joinNcleanCheat(res)) error("output collection\n");
 
-		    for(int i = 0; i < cf->n3; ++i) {
-		    	for(int j = 1; j <= nP; ++j) {
-                    if (j == party)
-		    		    mask_input[cf->num_wire - cf->n3 + i] = value[cf->num_wire - cf->n3 + i] != mask_input[cf->num_wire - cf->n3 + i];
-                    else
-		    		    mask_input[cf->num_wire - cf->n3 + i] = outputVals[j][i] != mask_input[cf->num_wire - cf->n3 + i];
+            // only party 1 can reconstruct
+            if (party == 1) {
+                memcpy(output, mask_input + cf->num_wire - cf->n3, cf->n3);
+
+		        for(int i = 0; i < cf->n3; ++i) {
+		        	for(int j = 1; j <= nP; ++j) {
+                        if (j == party)
+		        		    output[i] = value[cf->num_wire - cf->n3 + i] != output[i];
+                        else
+		        		    output[i] = outputVals[j][i] != output[i];
+                    }
                 }
             }
-		    memcpy(output, mask_input + cf->num_wire - cf->n3, cf->n3);
 
 
 		    //block *tmp_macs[nP+1];
@@ -724,9 +730,58 @@ ret.get();
 		    	for(int i = 2; i <= nP; ++i) delete[] tmp[i];
 		    	memcpy(output, mask_input + cf->num_wire - cf->n3, cf->n3);
 		    }
+		    delete[] mask_input;
         }
-		delete[] mask_input;
 	}
 
+    // output is ignored if party==1
+    // openToParty is ignored if party!=1
+    bool broadcast_output(bool* output, int openToParty=-1) {
+        bool ret = false;
+
+		if(party != 1) {
+            // have we been selected to receive output
+            bool selected = false;
+		    io->recv_data(1, &selected, sizeof(bool));
+
+            if (selected) {
+                // receive masked circuit eval result
+		        io->recv_data(1, mask_input + cf->num_wire - cf->n3, cf->n3);
+                // check mac - TODO
+
+                // reconstruct output
+		        for(int i = 0; i < cf->n3; ++i) {
+		        	for(int j = 1; j <= nP; ++j) {
+                        if (j == party)
+		        		    mask_input[cf->num_wire - cf->n3 + i] = value[cf->num_wire - cf->n3 + i] != mask_input[cf->num_wire - cf->n3 + i];
+                        else
+		        		    mask_input[cf->num_wire - cf->n3 + i] = outputVals[j][i] != mask_input[cf->num_wire - cf->n3 + i];
+                    }
+                }
+		        memcpy(output, mask_input + cf->num_wire - cf->n3, cf->n3);
+                ret = true;
+            }
+        } else {
+            // tell relevant party(ies) to expect output
+			for(int i = 2; i <= nP; ++i) {
+                bool selected = openToParty == -1 || openToParty == i;
+		        io->send_data(i, &selected, sizeof(bool));
+            }
+
+            // sends masked circuit evaluation result
+			for(int i = 2; i <= nP; ++i) {
+                bool selected = openToParty == -1 || openToParty == i;
+                if (selected) {
+			        io->send_data(i, mask_input + cf->num_wire - cf->n3, cf->n3);
+                    // send macs - TODO
+                }
+            }
+        }
+		delete[] mask_input;
+		for(int i = 0; i <= nP; ++i) {
+			delete[] outputVals[i];
+        }
+        return ret;
+    }
 };
 #endif// CMPC_H__

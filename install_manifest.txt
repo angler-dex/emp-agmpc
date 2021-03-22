@@ -1,0 +1,7 @@
+/usr/local/include/emp-agmpc/cmpc_config.h
+/usr/local/include/emp-agmpc/abitmp.h
+/usr/local/include/emp-agmpc/emp-agmpc.h
+/usr/local/include/emp-agmpc/netmp.h
+/usr/local/include/emp-agmpc/helper.h
+/usr/local/include/emp-agmpc/fpremp.h
+/usr/local/include/emp-agmpc/mpc.h
