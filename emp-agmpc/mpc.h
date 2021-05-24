@@ -606,6 +606,7 @@ ret.get();
 		    	int party2 = i + j - party;
 		    	res.push_back(pool->enqueue([this, party2]() -> bool {
 		    		io->send_data(party2, value + cf->num_wire - cf->n3, cf->n3);
+                    io->flush(party2);
 		    		return false;
 		    	}));
 		    	res.push_back(pool->enqueue([this, /*outputVals,*/ party2]() -> bool {
@@ -762,20 +763,29 @@ ret.get();
                 ret = true;
             }
         } else {
+		    vector<future<void>> res;
+
             // tell relevant party(ies) to expect output
 			for(int i = 2; i <= nP; ++i) {
-                bool selected = openToParty == -1 || openToParty == i;
-		        io->send_data(i, &selected, sizeof(bool));
+		    	res.push_back(pool->enqueue([this, i, openToParty]() {
+                    bool selected = openToParty == -1 || openToParty == i;
+		            io->send_data(i, &selected, sizeof(bool));
+				    io->flush(i);
+                }));
             }
 
             // sends masked circuit evaluation result
 			for(int i = 2; i <= nP; ++i) {
                 bool selected = openToParty == -1 || openToParty == i;
                 if (selected) {
-			        io->send_data(i, mask_input + cf->num_wire - cf->n3, cf->n3);
-                    // send macs - TODO
+		    	    res.push_back(pool->enqueue([this, i]() {
+			            io->send_data(i, mask_input + cf->num_wire - cf->n3, cf->n3);
+                        // send macs - TODO
+				        io->flush(i);
+                    }));
                 }
             }
+		    joinNclean(res);
         }
 		delete[] mask_input;
 		for(int i = 0; i <= nP; ++i) {

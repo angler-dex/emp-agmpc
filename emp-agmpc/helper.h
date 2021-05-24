@@ -12,6 +12,7 @@ using std::cerr;
 using std::endl;
 using std::flush;
 
+//const static block inProdTableBlock[] = {zero_block, all_one_block};
 const static block inProdTableBlock[] = {zero_block, makeBlock(0xFFFFFFFFULL, 0xFFFFFFFFULL)};
 block inProd(bool * b, block * blk, int length) {
 		block res = zero_block;
@@ -128,6 +129,7 @@ block sampleRandom(NetIOMP<nP> * io, PRG * prg, ThreadPool * pool, int party) {
 		int party2 = i + j - party;
 		res.push_back(pool->enqueue([dgst, io, party, party2]() {
 			io->send_data(party2, dgst[party], Hash::DIGEST_SIZE);
+			io->flush(party2);
 			io->recv_data(party2, dgst[party2], Hash::DIGEST_SIZE);
 		}));
 	}
@@ -136,6 +138,7 @@ block sampleRandom(NetIOMP<nP> * io, PRG * prg, ThreadPool * pool, int party) {
 		int party2 = i + j - party;
 		res2.push_back(pool->enqueue([io, S, dgst, party, party2]() -> bool {
 			io->send_data(party2, &S[party], sizeof(block));
+			io->flush(party2);
 			io->recv_data(party2, &S[party2], sizeof(block));
 			char tmp[Hash::DIGEST_SIZE];
 			Hash::hash_once(tmp, &S[party2], sizeof(block));

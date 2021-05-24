@@ -110,7 +110,9 @@ class NetIOMP { public:
 	}
 	void recv_data(int src, void * data, size_t len) {
 		if(src != 0 and src!= party) {
-			if(sent[src])flush(src);
+			//if(sent[src])flush(src); // sent is never set to false!
+            //  causes flush on every rx
+            //  instead, manually add flushes throughout protocol so it isn't needed.
 			if(src < party)
 				ios[src]->recv_data(data, len);
 			else
