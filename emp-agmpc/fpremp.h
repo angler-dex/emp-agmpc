@@ -192,6 +192,9 @@ class FpreMP { public:
 #endif
 
 		PRG prgf(fix_key);
+        //block prg_key = sampleRandom(io, &prg, pool, party); // causes cheat sampleRandom
+		//PRG prgf(&prg_key);
+
 		char (*dgst)[Hash::DIGEST_SIZE] = new char[nP+1][Hash::DIGEST_SIZE];
 		bool * tmp = new bool[length*bucket_size];
 		for(int i = 0; i < ssp; ++i) {
@@ -204,6 +207,7 @@ class FpreMP { public:
 			int party2 = i + j - party;
 			res.push_back(pool->enqueue([this, dgst, party2]() {
 				io->send_data(party2, dgst[party], Hash::DIGEST_SIZE);
+				io->flush(party2);
 				io->recv_data(party2, dgst[party2], Hash::DIGEST_SIZE);
 			}));
 		}
@@ -214,6 +218,7 @@ class FpreMP { public:
 			int party2 = i + j - party;
 			res2.push_back(pool->enqueue([this, X, dgst, party2]() -> bool {
 				io->send_data(party2, X[party], sizeof(block)*ssp);
+				io->flush(party2);
 				io->recv_data(party2, X[party2], sizeof(block)*ssp);
 				char tmp[Hash::DIGEST_SIZE];
 				Hash::hash_once(tmp, X[party2], sizeof(block)*ssp);

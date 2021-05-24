@@ -128,6 +128,7 @@ class ABitMP { public:
 		}
 		
 		const int chk = 2;
+		//const int chk = 1; // breaks on cheat check1
 		const int SIZE = 1024*2;
 		block (* tMAC)[4] = new block[SIZE/chk][4];
 		block (* tKEY)[4] = new block[SIZE/chk][4];
@@ -252,6 +253,7 @@ class ABitMP { public:
 				io->send_data(party2, data + length - 3*ssp, ssp);
 				for(int k = 1; k <= nP; ++k) if(k != party)
 					io->send_data(party2, MAC[k] + length - 3*ssp, sizeof(block)*ssp);
+				io->flush(party2);
 				return false;
 			}));
 			res2.push_back(pool->enqueue([this, dgst, bs, Ms,  party2]() -> bool {
