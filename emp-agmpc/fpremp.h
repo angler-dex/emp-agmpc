@@ -54,7 +54,7 @@ class FpreMP { public:
 		block * tMACphi[nP+1];
 		block * phi;
 		block *X [nP+1];
-		bool *tr = new bool[length*bucket_size*3+3*ssp];
+		bool *tr = new bool[length*bucket_size*3+3*ssp + 128];// 128 because iknp::recv_pre runs off end of array
 		phi = new block[length*bucket_size];
 		bool *s[nP+1], *e = new bool[length*bucket_size];
 		for(int i = 1; i <= nP; ++i) {
@@ -68,7 +68,7 @@ class FpreMP { public:
 			s[i] = new bool[length*bucket_size];
 			memset(s[i], 0, length*bucket_size);
 		}
-		prg.random_bool(tr, length*bucket_size*3+3*ssp);
+		prg.random_bool(tr, length*bucket_size*3+3*ssp+128);//+128 because iknp::recv_pre runs off end of array
 		// memset(tr, false, length*bucket_size*3+3*ssp);
 		abit->compute(tMAC, tKEY, tr, length*bucket_size*3 + 3*ssp);
 		vector<future<void>>	 res;
