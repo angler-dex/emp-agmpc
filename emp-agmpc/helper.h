@@ -57,12 +57,18 @@ bool inProd(bool * b, bool* b2, int length) {
 
 template<typename T>
 void joinNclean(vector<future<T>>& res) {
+#ifdef __debug
+	for(auto &v: res) assert(v.valid()==1);
+#endif
 	for(auto &v: res) v.get();
 	res.clear();
 }
 
 bool joinNcleanCheat(vector<future<bool>>& res) {
 	bool cheat = false;
+#ifdef __debug
+	for(auto &v: res) assert(v.valid()==1);
+#endif
 	for(auto &v: res) cheat = cheat or v.get();
 	res.clear();
 	return cheat;

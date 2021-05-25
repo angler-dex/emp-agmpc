@@ -79,7 +79,7 @@ class CMPC { public:
 		}
 		value = new bool[cf->num_wire];
 		ANDS_value = new bool[num_ands*3];
-		preprocess_value = new bool[total_pre];
+		preprocess_value = new bool[total_pre + 128]; //+128 because iknp::recv_pre runs off end of array
 		sigma_value = new bool[num_ands];
 	}
 	~CMPC() {
@@ -115,7 +115,7 @@ class CMPC { public:
 
 		fpre->compute(ANDS_mac, ANDS_key, ANDS_value, num_ands);
 
-		prg.random_bool(preprocess_value, total_pre);
+		prg.random_bool(preprocess_value, total_pre+128);//+128 because iknp::recv_pre runs off end of array
 		fpre->abit->compute(preprocess_mac, preprocess_key, preprocess_value, total_pre);
 		auto ret = fpre->abit->check(preprocess_mac, preprocess_key, preprocess_value, total_pre);
 ret.get();

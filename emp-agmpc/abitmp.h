@@ -236,6 +236,7 @@ class ABitMP { public:
 				io->send_data(party2, dgst[party], Hash::DIGEST_SIZE);
 				io->send_data(party2, dgst0[party*ssp], Hash::DIGEST_SIZE*ssp);
 				io->send_data(party2, dgst1[party*ssp], Hash::DIGEST_SIZE*ssp);
+				io->flush(party2);
 				io->recv_data(party2, dgst[party2], Hash::DIGEST_SIZE);
 				io->recv_data(party2, dgst0[party2*ssp], Hash::DIGEST_SIZE*ssp);
 				io->recv_data(party2, dgst1[party2*ssp], Hash::DIGEST_SIZE*ssp);
