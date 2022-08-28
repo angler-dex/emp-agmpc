@@ -14,7 +14,7 @@ using std::flush;
 
 //const static block inProdTableBlock[] = {zero_block, all_one_block};
 const static block inProdTableBlock[] = {zero_block, makeBlock(0xFFFFFFFFULL, 0xFFFFFFFFULL)};
-block inProd(bool * b, block * blk, int length) {
+inline block inProd(bool * b, block * blk, int length) {
 		block res = zero_block;
 		for(int i = 0; i < length; ++i) 
 //			if(b[i])
@@ -48,7 +48,7 @@ void inProds(block *Ms,  bool * tmp[ssp], block * MAC, int length) {
 		inProdhelp<ssp>(Ms, tmp, MAC, i);
 	}
 }
-bool inProd(bool * b, bool* b2, int length) {
+inline bool inProd(bool * b, bool* b2, int length) {
 		bool res = false;
 		for(int i = 0; i < length; ++i)
 			res = (res != (b[i] and b2[i]));
@@ -64,7 +64,7 @@ void joinNclean(vector<future<T>>& res) {
 	res.clear();
 }
 
-bool joinNcleanCheat(vector<future<bool>>& res) {
+inline bool joinNcleanCheat(vector<future<bool>>& res) {
 	bool cheat = false;
 #ifdef __debug
 	for(auto &v: res) assert(v.valid()==1);
@@ -74,7 +74,7 @@ bool joinNcleanCheat(vector<future<bool>>& res) {
 	return cheat;
 }
 
-void send_bool(NetIO * io, const bool * data, int length) {
+inline void send_bool(NetIO * io, const bool * data, int length) {
 	if(lan_network) {
 		io->send_data(data, length);
 		return;
@@ -89,7 +89,7 @@ void send_bool(NetIO * io, const bool * data, int length) {
 	}
 }
 
-void recv_bool(NetIO * io, bool * data, int length) {
+inline void recv_bool(NetIO * io, bool * data, int length) {
 	if(lan_network) {
 		io->recv_data(data, length);
 		return;
@@ -122,8 +122,8 @@ inline uint8_t LSB(block & b) {
 	return _mm_extract_epi8(b, 0) & 0x1;
 }
 
-template<int nP>
-block sampleRandom(NetIOMP<nP> * io, PRG * prg, ThreadPool * pool, int party) {
+inline block sampleRandom(NetIOMP * io, PRG * prg, ThreadPool * pool, int party) {
+  int nP = io->nP;
 	vector<future<void>> res;
 	vector<future<bool>> res2;
 	char (*dgst)[Hash::DIGEST_SIZE] = new char[nP+1][Hash::DIGEST_SIZE];
@@ -164,8 +164,8 @@ block sampleRandom(NetIOMP<nP> * io, PRG * prg, ThreadPool * pool, int party) {
 	return result;
 }
 
-template<int nP>
-void check_MAC(NetIOMP<nP> * io, block * MAC[nP+1], block * KEY[nP+1], bool * r, block Delta, int length, int party) {
+inline void check_MAC(NetIOMP * io, block * MAC[], block * KEY[], bool * r, block Delta, int length, int party) {
+  int nP = io->nP;
 	block * tmp = new block[length];
 	block tD;
 	for(int i = 1; i <= nP; ++i) for(int j = 1; j <= nP; ++j) if (i < j) {
@@ -188,13 +188,12 @@ void check_MAC(NetIOMP<nP> * io, block * MAC[nP+1], block * KEY[nP+1], bool * r,
 		cerr<<"check_MAC pass!\n"<<flush; 
 }
 
-template<int nP>
-void check_correctness(NetIOMP<nP>* io, bool * r, int length, int party) {
+inline void check_correctness(NetIOMP* io, bool * r, int length, int party) {
 	if (party == 1) {
 		bool * tmp1 = new bool[length*3];
 		bool * tmp2 = new bool[length*3];
 		memcpy(tmp1, r, length*3);
-		for(int i = 2; i <= nP; ++i) {
+		for(int i = 2; i <= io->nP; ++i) {
 			io->recv_data(i, tmp2, length*3);
 			for(int k = 0; k < length*3; ++k)
 				tmp1[k] = (tmp1[k] != tmp2[k]);

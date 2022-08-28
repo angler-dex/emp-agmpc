@@ -5,10 +5,11 @@
 using namespace std;
 
 int main(int argc, char** argv) {
-	int port, party;
+  int port, party;
+  const static int nP = kIpPorts.size();
 	parse_party_and_port(argv, &party, &port);
 
-	NetIOMP<3> io(party, port);
+	NetIOMP io(party, port);
 	for(int i = 1; i <= 3; ++i)for(int j = 1; j <= 3; ++j)if(i < j) {
 		if(i == party) {
 			int data = i*100+j;
@@ -22,7 +23,7 @@ int main(int argc, char** argv) {
 		}
 	}
 	io.flush();
-	ThreadPool pool(2*3*3);	
+	ThreadPool pool(2*3*3);
 	block *MAC[4], *KEY[4];
 	bool * data;
 	PRG prg;

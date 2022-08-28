@@ -2,14 +2,13 @@
 #define EMP_AGMPC_TEST_H__
 const string circuit_file_location = macro_xstr(EMP_CIRCUIT_PATH) + string("bristol_format/");
 
-template<int nP>
-void bench_once(int party, NetIOMP<nP> * ios[2], ThreadPool * pool, string filename) {
+void bench_once(int party, NetIOMP * ios[2], ThreadPool * pool, string filename) {
 	if(party == 1)cout <<"CIRCUIT:\t"<<filename<<endl;
 	//string file = circuit_file_location+"/"+filename;
 	BristolFormat cf(filename.c_str());
 
 	auto start = clock_start();
-	CMPC<nP>* mpc = new CMPC<nP>(ios, pool, party, &cf);
+	CMPC* mpc = new CMPC(ios, pool, party, &cf);
 	ios[0]->flush();
 	ios[1]->flush();
 	double t2 = time_from(start);
