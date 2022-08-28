@@ -6,43 +6,56 @@
 #include <emp-tool/emp-tool.h>
 using namespace emp;
 
-template<int nP>
 class CMPC { public:
+  int nP;
 	const static int SSP = 5;//5*8 in fact...
 	const block MASK = makeBlock(0x0ULL, 0xFFFFFULL);
-	FpreMP<nP>* fpre = nullptr;
-	block* mac[nP+1];
-	block* key[nP+1];
+	FpreMP* fpre = nullptr;
+	block** mac;
+	block** key;
 	bool* value;
 
-	block * preprocess_mac[nP+1];
-	block * preprocess_key[nP+1];
+	block** preprocess_mac;
+	block** preprocess_key;
 	bool* preprocess_value;
 
-	block * sigma_mac[nP+1];
-	block * sigma_key[nP+1];
+	block** sigma_mac;
+	block** sigma_key;
 	bool * sigma_value;
 
-	block * ANDS_mac[nP+1];
-	block * ANDS_key[nP+1];
+	block** ANDS_mac;
+	block** ANDS_key;
 	bool * ANDS_value;
 
 	block * labels;
 	bool * mask = nullptr;
 	BristolFormat * cf;
-	NetIOMP<nP> * io;
+	NetIOMP * io;
 	int num_ands = 0, num_in;
 	int party, total_pre, ssp;
 	ThreadPool * pool;
 	block Delta;
-		
-	block (*GTM)[4][nP+1];
-	block (*GTK)[4][nP+1];
-	bool (*GTv)[4];
-	block (*GT)[nP+1][4][nP+1];
-	block * eval_labels[nP+1];
+
+	block *GTM;
+	block *GTK;
+	bool *GTv;
+	block *GT;
+	block **eval_labels;
 	PRP prp;
-	CMPC(NetIOMP<nP> * io[2], ThreadPool * pool, int party, BristolFormat * cf, int ssp = 40) {
+
+	CMPC(NetIOMP * io[2], ThreadPool * pool, int party, BristolFormat * cf, int ssp = 40)
+      : nP(io[0]->nP)
+  {
+    mac = new block*[nP+1];
+    key = new block*[nP+1];
+    preprocess_mac = new block*[nP+1];
+    preprocess_key = new block*[nP+1];
+    sigma_mac = new block*[nP+1];
+    sigma_key = new block*[nP+1];
+    ANDS_mac = new block*[nP+1];
+    ANDS_key = new block*[nP+1];
+    eval_labels = new block*[nP+1];
+
 		this->party = party;
 		this->io = io[0];
 		this->cf = cf;
@@ -55,15 +68,15 @@ class CMPC { public:
 		}
 		num_in = cf->n1+cf->n2;
 		total_pre = num_in + num_ands + 3*ssp;
-		fpre = new FpreMP<nP>(io, pool, party, ssp);
+		fpre = new FpreMP(io, pool, party, ssp);
 		Delta = fpre->Delta;
 
-		if(party == 1) {
-			GTM = new block[num_ands][4][nP+1];
-			GTK = new block[num_ands][4][nP+1];
-			GTv = new bool[num_ands][4];
-			GT = new block[num_ands][nP+1][4][nP+1];
-		}
+    if (party == 1) {
+		  GTM = new block[num_ands*4*(nP+1)];
+		  GTK = new block[num_ands*4*(nP+1)];
+		  GTv = new bool[num_ands*4];
+		  GT = new block[num_ands*(nP+1)*4*(nP+1)];
+    }
 
 		labels = new block[cf->num_wire];
 		for(int i  = 1; i <= nP; ++i) {
@@ -84,12 +97,14 @@ class CMPC { public:
 	}
 	~CMPC() {
 		delete fpre;
-		if(party == 1) {
-			delete[] GTM;
-			delete[] GTK;
-			delete[] GTv;
-			delete[] GT;
-		}
+
+    if (party == 1) {
+		  delete[] GTM;
+		  delete[] GTK;
+		  delete[] GTv;
+		  delete[] GT;
+    }
+
 		delete[] labels;
 		for(int i = 1; i <= nP; ++i) {
 			delete[] key[i];
@@ -102,6 +117,15 @@ class CMPC { public:
 			delete[] sigma_key[i];
 			delete[] eval_labels[i];
 		}
+    delete[] mac;
+    delete[] key;
+    delete[] preprocess_mac;
+    delete[] preprocess_key;
+    delete[] sigma_mac;
+    delete[] sigma_key;
+    delete[] ANDS_mac;
+    delete[] ANDS_key;
+    delete[] eval_labels;
 		delete[] value;
 		delete[] ANDS_value;
 		delete[] preprocess_value;
@@ -126,16 +150,18 @@ ret.get();
 		}
 		memcpy(value, preprocess_value, num_in * sizeof(bool));
 #ifdef __debug
-		check_MAC<nP>(io, ANDS_mac, ANDS_key, ANDS_value, Delta, num_ands*3, party);
-		check_correctness<nP>(io, ANDS_value, num_ands, party);
+		check_MAC(io, ANDS_mac, ANDS_key, ANDS_value, Delta, num_ands*3, party);
+		check_correctness(io, ANDS_value, num_ands, party);
 #endif
 //		ret.get();
 	}
 
 	void function_dependent() {
 		int ands = num_in;
-		bool * x[nP+1];
-		bool * y[nP+1];
+		//bool * x[nP+1];
+		//bool * y[nP+1];
+		bool **x = new bool*[nP+1];
+		bool **y = new bool*[nP+1];
 		for(int i = 1; i <= nP; ++i) {
 			x[i] = new bool[num_ands];
 			y[i] = new bool[num_ands];
@@ -173,7 +199,7 @@ ret.get();
 		}
 
 #ifdef __debug
-		check_MAC<nP>(io, mac, key, value, Delta, cf->num_wire, party);
+		check_MAC(io, mac, key, value, Delta, cf->num_wire, party);
 #endif
 
 		ands = 0;
@@ -237,7 +263,7 @@ ret.get();
 			}
 		}//sigma_[] stores the and of input wires to each AND gates
 #ifdef __debug_
-		check_MAC<nP>(io, sigma_mac, sigma_key, sigma_value, Delta, num_ands, party);
+		check_MAC(io, sigma_mac, sigma_key, sigma_value, Delta, num_ands, party);
 		ands = 0;
 		for(int i = 0; i < cf->num_gate; ++i) {
 			if (cf->gates[4*i+3] == AND_GATE) {
@@ -249,7 +275,10 @@ ret.get();
 #endif
 
 		ands = 0;
-		block H[4][nP+1];
+		block *H[4];
+    for (int i=0; i<4; i++) {
+      H[i] = new block[nP+1];
+    }
 		block K[4][nP+1], M[4][nP+1];
 		bool r[4];
 		if(party != 1) { 
@@ -282,8 +311,10 @@ ret.get();
 					if(r[j]) 
 						H[j][party] = H[j][party] ^ Delta;
 				}
-				for(int j = 0; j < 4; ++j)
-					io->send_data(1, H[j]+1, sizeof(block)*(nP));
+				for(int j = 0; j < 4; ++j) {
+					//io->send_data(1, H[j]+1, sizeof(block)*(nP));
+					io->send_data(1, &H[j][1], sizeof(block)*(nP));
+        }
 				++ands;
 			}
 			io->flush(1);
@@ -291,9 +322,12 @@ ret.get();
 			for(int i = 2; i <= nP; ++i) {
 				int party2 = i;
 				res.push_back(pool->enqueue([this, party2]() {
-					for(int i = 0; i < num_ands; ++i)
-						for(int j = 0; j < 4; ++j)
-							io->recv_data(party2, GT[i][party2][j]+1, sizeof(block)*(nP));
+					for(int i = 0; i < num_ands; ++i) {
+						for(int j = 0; j < 4; ++j) {
+							io->recv_data(party2, &mat4di(GT, i,party2,j,1, num_ands,nP+1,4,nP+1),
+                            sizeof(block)*(nP));
+            }
+          }
 				}));
 			}
 			for(int i = 0; i < cf->num_gate; ++i) if(cf->gates[4*i+3] == AND_GATE) {
@@ -314,17 +348,22 @@ ret.get();
 					K[2][j] = K[0][j] ^ key[j][cf->gates[4*i+1]];
 					K[3][j] = K[1][j] ^ key[j][cf->gates[4*i+1]];
 				}
-				memcpy(GTK[ands], K, sizeof(block)*4*(nP+1));
-				memcpy(GTM[ands], M, sizeof(block)*4*(nP+1));
-				memcpy(GTv[ands], r, sizeof(bool)*4);
+				memcpy(&mat3di(GTK, ands,0,0, num_ands,4,nP+1), K, sizeof(block)*4*(nP+1));
+				memcpy(&mat3di(GTM, ands,0,0, num_ands,4,nP+1), M, sizeof(block)*4*(nP+1));
+				memcpy(&mat2di(GTv, ands,0, num_ands,4), r, sizeof(bool)*4);
 				++ands;
 			}
 			joinNclean(res);
 		}
+    for (int i=0; i<4; i++) {
+      delete[] H[i];
+    }
 		for(int i = 1; i <= nP; ++i) {
 			delete[] x[i];
 			delete[] y[i];
 		}
+    delete[] x;
+    delete[] y;
 	}
 
 	void online (bool * input, bool * output) {
@@ -336,7 +375,8 @@ ret.get();
 			io->flush(1);
 			io->recv_data(1, mask_input, num_in);
 		} else {
-			bool * tmp[nP+1];
+			//bool * tmp[nP+1];
+			bool **tmp = new bool*[nP+1];
 			for(int i = 2; i <= nP; ++i) tmp[i] = new bool[num_in];
 			vector<future<void>> res;
 			for(int i = 2; i <= nP; ++i) {
@@ -358,6 +398,7 @@ ret.get();
 			}
 			joinNclean(res);
 			for(int i = 2; i <= nP; ++i) delete[] tmp[i];
+      delete[] tmp;
 		}
 	
 		if(party!= 1) {
@@ -386,18 +427,24 @@ ret.get();
 				} else if (cf->gates[4*i+3] == AND_GATE) {
 					int index = 2*mask_input[cf->gates[4*i]] + mask_input[cf->gates[4*i+1]];
 					block H[nP+1];
-					for(int j = 2; j <= nP; ++j)
-						eval_labels[j][cf->gates[4*i+2]] = GTM[ands][index][j];
-					mask_input[cf->gates[4*i+2]] = GTv[ands][index];
+					for(int j = 2; j <= nP; ++j) {
+						//eval_labels[j][cf->gates[4*i+2]] = GTM[ands][index][j];
+						eval_labels[j][cf->gates[4*i+2]] = mat3di(GTM, ands,index,j, num_ands,4,nP+1);
+          }
+					//mask_input[cf->gates[4*i+2]] = GTv[ands][index];
+					mask_input[cf->gates[4*i+2]] = mat2di(GTv, ands,index, num_ands,4);
 					for(int j = 2; j <= nP; ++j) {
 						Hash(H, eval_labels[j][cf->gates[4*i]], eval_labels[j][cf->gates[4*i+1]], ands, index);
-						xorBlocks_arr(H, H, GT[ands][j][index], nP+1);
+						//xorBlocks_arr(H, H, GT[ands][j][index], nP+1);
+						xorBlocks_arr(H, H, &mat4di(GT, ands,j,index,0, num_ands,nP+1,4,nP+1), nP+1);
 						for(int k = 2; k <= nP; ++k)
 							eval_labels[k][cf->gates[4*i+2]] = H[k] ^ eval_labels[k][cf->gates[4*i+2]];
 					
-						block t0 = GTK[ands][index][j] ^ Delta;
+						//block t0 = GTK[ands][index][j] ^ Delta;
+						block t0 = mat3di(GTK, ands,index,j, num_ands,4,nP+1) ^ Delta;
 
-						if(cmpBlock(&H[1], &GTK[ands][index][j], 1))
+						//if(cmpBlock(&H[1], &GTK[ands][index][j], 1))
+						if(cmpBlock(&H[1], &mat3di(GTK, ands,index,j, num_ands,4,nP+1), 1))
 							mask_input[cf->gates[4*i+2]] = mask_input[cf->gates[4*i+2]] != false;
 						else if(cmpBlock(&H[1], &t0, 1))
 							mask_input[cf->gates[4*i+2]] = mask_input[cf->gates[4*i+2]] != true;
@@ -417,7 +464,8 @@ ret.get();
 			io->flush(1);
 		} else {
 			vector<future<void>> res;
-			bool * tmp[nP+1];
+			//bool * tmp[nP+1];
+			bool **tmp = new bool*[nP+1];
 			for(int i = 2; i <= nP; ++i) 
 				tmp[i] = new bool[cf->n3];
 			for(int i = 2; i <= nP; ++i) {
@@ -434,11 +482,12 @@ ret.get();
 					mask_input[cf->num_wire - cf->n3 + i] = value[cf->num_wire - cf->n3 + i] != mask_input[cf->num_wire - cf->n3 + i];
 
 			for(int i = 2; i <= nP; ++i) delete[] tmp[i];
+      delete[] tmp;
 			memcpy(output, mask_input + cf->num_wire - cf->n3, cf->n3);
 		}
 		delete[] mask_input;
 	}
-	void Hash(block H[4][nP+1], const block & a, const block & b, uint64_t idx) {
+	void Hash(block **H, const block & a, const block & b, uint64_t idx) {
 		block T[4];
 		T[0] = sigma(a);
 		T[1] = sigma(a ^ Delta);
@@ -453,16 +502,16 @@ ret.get();
 			H[j][i] = H[j][0] ^ makeBlock(4*idx+j, i);
 		}
 		for(int j = 0; j < 4; ++j) {
-			prp.permute_block(H[j]+1, nP);
+			prp.permute_block(&H[j][1], nP);
 		}
 	}
 
-	void Hash(block H[nP+1], const block &a, const block& b, uint64_t idx, uint64_t row) {
+	void Hash(block *H, const block &a, const block& b, uint64_t idx, uint64_t row) {
 		H[0] = sigma(a) ^ sigma(sigma(b));
 		for(int i = 1; i <= nP; ++i) {
 			H[i] = H[0] ^ makeBlock(4*idx+row, i);
 		}
-		prp.permute_block(H+1, nP);
+		prp.permute_block(&H[1], nP);
 	}
 
 	string tostring(bool a) {
@@ -471,10 +520,13 @@ ret.get();
 	}
 
 	bool *mask_input;
-	char *outputVals[nP+1];
+	//char *outputVals[nP+1];
+	char **outputVals;
+
 	void online (bool * input, bool * output, int* start, int* end, bool broadcast_output = false) {
 		mask_input = new bool[cf->num_wire];
-		bool * input_mask[nP+1];
+		//bool * input_mask[nP+1];
+		bool **input_mask = new bool*[nP+1];
 		for(int i = 0; i <= nP; ++i) input_mask[i] = new bool[end[party] - start[party]];
 		memcpy(input_mask[party], value+start[party], end[party] - start[party]);
 		memcpy(input_mask[0], input+start[party], end[party] - start[party]);
@@ -519,21 +571,25 @@ ret.get();
 			vector<future<void>> res;
 			for(int i = 2; i <= nP; ++i) {
 				int party2 = i;
-				res.push_back(pool->enqueue([this, /*mask_input,*/ start, end , party2]() {
-					io->recv_data(party2, this->mask_input+start[party2], end[party2] - start[party2]);
+				res.push_back(pool->enqueue([this, start, end , party2]() {
+					io->recv_data(party2, mask_input+start[party2], end[party2] - start[party2]);
 				}));
 			}
 			joinNclean(res);
 			memcpy(mask_input, input_mask[0], end[1]-start[1]);
 			for(int i = 2; i <= nP; ++i) {
 				int party2 = i;
-				res.push_back(pool->enqueue([this, /*mask_input,*/ party2]() {
-					io->send_data(party2, this->mask_input, num_in);
+				res.push_back(pool->enqueue([this, party2]() {
+					io->send_data(party2, mask_input, num_in);
 					io->flush(party2);
 				}));
 			}
 			joinNclean(res);
 		}
+
+		for(int i = 0; i <= nP; ++i)
+      delete[] input_mask[i];
+    delete[] input_mask;
 	
 		if(party!= 1) {
 			for(int i = 0; i < num_in; ++i) {
@@ -561,18 +617,24 @@ ret.get();
 				} else if (cf->gates[4*i+3] == AND_GATE) {
 					int index = 2*mask_input[cf->gates[4*i]] + mask_input[cf->gates[4*i+1]];
 					block H[nP+1];
-					for(int j = 2; j <= nP; ++j)
-						eval_labels[j][cf->gates[4*i+2]] = GTM[ands][index][j];
-					mask_input[cf->gates[4*i+2]] = GTv[ands][index];
+					for(int j = 2; j <= nP; ++j) {
+						//eval_labels[j][cf->gates[4*i+2]] = GTM[ands][index][j];
+						eval_labels[j][cf->gates[4*i+2]] = mat3di(GTM, ands,index,j, num_ands,4,nP+1);
+          }
+					//mask_input[cf->gates[4*i+2]] = GTv[ands][index];
+					mask_input[cf->gates[4*i+2]] = mat2di(GTv, ands,index, num_ands,4);
 					for(int j = 2; j <= nP; ++j) {
 						Hash(H, eval_labels[j][cf->gates[4*i]], eval_labels[j][cf->gates[4*i+1]], ands, index);
-						xorBlocks_arr(H, H, GT[ands][j][index], nP+1);
+						//xorBlocks_arr(H, H, GT[ands][j][index], nP+1);
+						xorBlocks_arr(H, H, &mat4di(GT, ands,j,index,0, num_ands,nP+1,4,nP+1), nP+1);
 						for(int k = 2; k <= nP; ++k)
 							eval_labels[k][cf->gates[4*i+2]] = H[k] ^ eval_labels[k][cf->gates[4*i+2]];
 					
-						block t0 = GTK[ands][index][j] ^ Delta;
+						//block t0 = GTK[ands][index][j] ^ Delta;
+						block t0 = mat3di(GTK, ands,index,j, num_ands,4,nP+1) ^ Delta;
 
-						if(cmpBlock(&H[1], &GTK[ands][index][j], 1))
+						//if(cmpBlock(&H[1], &GTK[ands][index][j], 1))
+						if(cmpBlock(&H[1], &mat3di(GTK, ands,index,j, num_ands,4,nP+1), 1))
 							mask_input[cf->gates[4*i+2]] = mask_input[cf->gates[4*i+2]] != false;
 						else if(cmpBlock(&H[1], &t0, 1))
 							mask_input[cf->gates[4*i+2]] = mask_input[cf->gates[4*i+2]] != true;
@@ -599,8 +661,9 @@ ret.get();
 
             // everyone broadcasts output (no mac checking).
             // must run before winner is selected to prevent malicious abort
-            for(int i = 0; i <= nP; ++i)
-		        outputVals[i] = new char[cf->n3];
+        outputVals = new char*[nP+1];
+        for(int i = 0; i <= nP; ++i)
+		      outputVals[i] = new char[cf->n3];
 
 		    for(int i = 1; i <= nP; ++i) for(int j = 1; j<= nP; ++j) if( (i < j) and (i == party or j == party) ) {
 		    	int party2 = i + j - party;
@@ -609,8 +672,8 @@ ret.get();
                     io->flush(party2);
 		    		return false;
 		    	}));
-		    	res.push_back(pool->enqueue([this, /*outputVals,*/ party2]() -> bool {
-		    		io->recv_data(party2, this->outputVals[party2], cf->n3);
+		    	res.push_back(pool->enqueue([this, party2]() -> bool {
+		    		io->recv_data(party2, outputVals[party2], cf->n3);
                     return false;
 		    	}));
             }
@@ -712,7 +775,8 @@ ret.get();
 		    	io->flush(1);
 		    } else {
 		    	vector<future<void>> res;
-		    	bool * tmp[nP+1];
+		    	//bool * tmp[nP+1];
+		    	bool **tmp = new bool*[nP+1];
 		    	for(int i = 2; i <= nP; ++i)
 		    		tmp[i] = new bool[cf->n3];
 		    	for(int i = 2; i <= nP; ++i) {
@@ -729,6 +793,7 @@ ret.get();
 		    			mask_input[cf->num_wire - cf->n3 + i] = value[cf->num_wire - cf->n3 + i] != mask_input[cf->num_wire - cf->n3 + i];
 
 		    	for(int i = 2; i <= nP; ++i) delete[] tmp[i];
+          delete[] tmp;
 		    	memcpy(output, mask_input + cf->num_wire - cf->n3, cf->n3);
 		    }
 		    delete[] mask_input;
@@ -791,6 +856,7 @@ ret.get();
 		for(int i = 0; i <= nP; ++i) {
 			delete[] outputVals[i];
         }
+		delete[] outputVals;
         return ret;
     }
 };

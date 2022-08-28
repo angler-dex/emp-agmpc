@@ -8,6 +8,25 @@ include(${CMAKE_FOLDER}/cmake/common.cmake)
 include(${CMAKE_FOLDER}/cmake/enable_rdseed.cmake)
 include(${CMAKE_FOLDER}/cmake/enable_float.cmake)
 
+add_compile_options("-Wpointer-arith")
+
+add_compile_options(-fsanitize=address)
+add_link_options(-fsanitize=address)
+add_compile_options(-fsanitize=pointer-compare)
+add_link_options(-fsanitize=pointer-compare)
+
+#add_compile_options(-fsanitize=thread)
+#add_link_options(-fsanitize=thread)
+
+add_compile_options(-fsanitize=undefined)
+add_link_options(-fsanitize=undefined)
+add_compile_options(-fsanitize-address-use-after-scope)
+add_link_options(-fsanitize-address-use-after-scope)
+#add_compile_options(-fstack-protector-all)
+#add_link_options(-fstack-protector-all)
+
+
+
 FIND_PACKAGE(emp-ot REQUIRED)
 INCLUDE_DIRECTORIES(${EMP-OT_INCLUDE_DIRS})
 

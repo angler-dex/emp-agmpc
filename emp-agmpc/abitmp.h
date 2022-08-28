@@ -5,11 +5,11 @@
 #include "netmp.h"
 #include "helper.h"
 
-template<int nP>
 class ABitMP { public:
-	IKNP<NetIO> *abit1[nP+1];
-	IKNP<NetIO> *abit2[nP+1];
-	NetIOMP<nP> *io;
+  int nP;
+	vector<IKNP<NetIO> *> abit1;
+	vector<IKNP<NetIO> *> abit2;
+	NetIOMP *io;
 	ThreadPool * pool;
 	int party;
 	PRG prg;
@@ -17,11 +17,13 @@ class ABitMP { public:
 	Hash hash;
 	int ssp;
 	block * pretable;
-	ABitMP(NetIOMP<nP>* io, ThreadPool * pool, int party, int ssp = 40) {
-		this->ssp = ssp;
-		this->io = io;
-		this->pool = pool;
-		this->party = party;
+
+	ABitMP(NetIOMP* io, ThreadPool * pool, int party, int ssp = 40)
+      : nP(io->nP),
+        abit1(nP+1, nullptr),
+        abit2(nP+1, nullptr),
+        io(io), pool(pool), party(party), ssp(ssp) {
+
 		bool * tmp = new bool[128];
 		prg.random_bool(tmp, 128);
 		for(int i = 1; i <= nP; ++i) for(int j = 1; j <= nP; ++j) if(i < j) {
@@ -35,24 +37,25 @@ class ABitMP { public:
 		}
 
 		vector<future<void>> res;//relic multi-thread problems...
+    res.reserve(2*nP);
 		for(int i = 1; i <= nP; ++i) for(int j = 1; j <= nP; ++j) if(i < j) {
 			if(i == party) {
 				res.push_back(pool->enqueue([this, io, tmp, j]() {
 					abit1[j]->setup_send(tmp);
-					io->flush(j);
+					//io->flush(j);
 				}));
 				res.push_back(pool->enqueue([this, io, j]() {
 					abit2[j]->setup_recv();
-					io->flush(j);
+					//io->flush(j);
 				}));
 			} else if (j == party) {
 				res.push_back(pool->enqueue([this, io, i]() {
 					abit2[i]->setup_recv();
-					io->flush(i);
+					//io->flush(i);
 				}));
 				res.push_back(pool->enqueue([this, io, tmp, i]() {
 					abit1[i]->setup_send(tmp);
-					io->flush(i);
+					//io->flush(i);
 				}));
 			}
 		}
@@ -70,13 +73,13 @@ class ABitMP { public:
 			delete abit2[i];
 		}
 	}
-	void compute(block * MAC[nP+1], block * KEY[nP+1], bool* data, int length) {
+	void compute(block **MAC, block **KEY, bool* data, int length) {
 		vector<future<void>> res;
 		for(int i = 1; i <= nP; ++i) for(int j = 1; j<= nP; ++j) if( (i < j) and (i == party or j == party) ) {
 			int party2 = i + j - party;
 			res.push_back(pool->enqueue([this, KEY, length, party2]() {
 				abit1[party2]->send_cot(KEY[party2], length);
-				io->flush(party2);
+				//io->flush(party2);
 			}));
 			res.push_back(pool->enqueue([this, MAC, data, length, party2]() {
 				abit2[party2]->recv_cot(MAC[party2], data, length);
@@ -89,7 +92,7 @@ class ABitMP { public:
 #endif
 	}
 
-	future<void> check(block * MAC[nP+1], block * KEY[nP+1], bool* data, int length) {
+	future<void> check(block **MAC, block **KEY, bool* data, int length) {
 		future<void> ret = pool->enqueue([this, MAC, KEY, data, length](){
 			check1(MAC, KEY, data, length);
 			check2(MAC, KEY, data, length);
@@ -97,15 +100,15 @@ class ABitMP { public:
 		return ret;
 	}
 
-	void check1(block * MAC[nP+1], block * KEY[nP+1], bool* data, int length) {
+	void check1(block **MAC, block **KEY, bool* data, int length) {
 		block seed = sampleRandom(io, &prg, pool, party);
 		PRG prg2(&seed);
 		uint8_t * tmp;
-		block * Ms[nP+1];
-		bool * bs[nP+1];
-		block * Ks[nP+1];
-		block * tMs[nP+1];
-		bool * tbs[nP+1];
+		block **Ms = new block*[nP+1];
+		bool **bs = new bool*[nP+1];
+		block **Ks = new block*[nP+1];
+		block **tMs = new block*[nP+1];
+		bool **tbs = new bool*[nP+1];
 
 		tmp = new uint8_t[ssp*length];
 		prg2.random_data(tmp, ssp*length);
@@ -127,19 +130,19 @@ class ABitMP { public:
 			tbs[i] = new bool[ssp];
 		}
 		
-		const int chk = 2;
-		//const int chk = 1; // breaks on cheat check1
+		//const int chk = 2;
+		const int chk = 1; // breaks on cheat check1
 		const int SIZE = 1024*2;
-		block (* tMAC)[4] = new block[SIZE/chk][4];
-		block (* tKEY)[4] = new block[SIZE/chk][4];
-		bool (* tb)[4] = new bool[length/chk][4];
+		block *tMAC = new block[(SIZE/chk)*4];
+		block *tKEY = new block[(SIZE/chk)*4];
+		bool *tb = new bool[(length/chk)*4];
 		memset(tMAC, 0, sizeof(block)*4*SIZE/chk);
 		memset(tKEY, 0, sizeof(block)*4*SIZE/chk);
 		memset(tb, false, 4*length/chk);
 		for(int i = 0; i < length; i+=chk) {
-			tb[i/chk][1] = data[i];
-			tb[i/chk][2] = data[i+1];
-			tb[i/chk][3] = data[i] != data[i+1];
+			mat2di(tb, i/chk,1, length/chk,4) = data[i];
+			mat2di(tb, i/chk,2, length/chk,4) = data[i+1];
+			mat2di(tb, i/chk,3, length/chk,4) = data[i] != data[i+1];
 		}
 
 		for(int k = 1; k <= nP; ++k) if(k != party) {
@@ -147,23 +150,26 @@ class ABitMP { public:
 			for(int tt = 0; tt < length/SIZE; tt++) {
 				int start = SIZE*tt;
 				for(int i = SIZE*tt; i < SIZE*(tt+1) and i < length; i+=chk) {
-				  tMAC[(i-start)/chk][1] = MAC[k][i];
-				  tMAC[(i-start)/chk][2] = MAC[k][i+1];
-				  tMAC[(i-start)/chk][3] = MAC[k][i] ^ MAC[k][i+1];
+				  mat2di(tMAC, (i-start)/chk,1, SIZE/chk,4) = MAC[k][i];
+				  mat2di(tMAC, (i-start)/chk,2, SIZE/chk,4) = MAC[k][i+1];
+				  mat2di(tMAC, (i-start)/chk,3, SIZE/chk,4) = MAC[k][i] ^ MAC[k][i+1];
 
-				  tKEY[(i-start)/chk][1] = KEY[k][i];
-				  tKEY[(i-start)/chk][2] = KEY[k][i+1];
-				  tKEY[(i-start)/chk][3] = KEY[k][i] ^ KEY[k][i+1];
+				  mat2di(tKEY, (i-start)/chk,1, SIZE/chk,4) = KEY[k][i];
+				  mat2di(tKEY, (i-start)/chk,2, SIZE/chk,4) = KEY[k][i+1];
+				  mat2di(tKEY, (i-start)/chk,3, SIZE/chk,4) = KEY[k][i] ^ KEY[k][i+1];
 				  for(int j = 0; j < ssp; ++j) {
-							 Ms[k][j] = Ms[k][j] ^ tMAC[(i-start)/chk][*tmpptr];
-							 Ks[k][j] = Ks[k][j] ^ tKEY[(i-start)/chk][*tmpptr];
-							 bs[k][j] = bs[k][j] != tb[i/chk][*tmpptr];
+							 Ms[k][j] = Ms[k][j] ^ mat2di(tMAC, (i-start)/chk,*tmpptr, SIZE/chk,4);
+							 Ks[k][j] = Ks[k][j] ^ mat2di(tKEY, (i-start)/chk,*tmpptr, SIZE/chk,4);
+							 bs[k][j] = bs[k][j] != mat2di(tb, i/chk,*tmpptr, length/chk,4);
 							 ++tmpptr;
 					}
 				}
 			}
 		}
 		delete[] tmp;
+    delete[] tMAC;
+    delete[] tKEY;
+    delete[] tb;
 		vector<future<bool>> res;
 		//TODO: they should not need to send MACs.	
 		for(int i = 1; i <= nP; ++i) for(int j = 1; j<= nP; ++j) if( (i < j) and (i == party or j == party) ) {
@@ -193,18 +199,25 @@ class ABitMP { public:
 			delete[] tMs[i];
 			delete[] tbs[i];
 		}
+		delete[] Ms;
+    delete[] bs;
+    delete[] Ks;
+    delete[] tMs;
+    delete[] tbs;
 	}
 
-	void check2(block * MAC[nP+1], block * KEY[nP+1], bool* data, int length) {
+	void check2(block **MAC, block **KEY, bool* data, int length) {
 		//last 2*ssp are garbage already.
-		block * Ks[2], *Ms[nP+1][nP+1];
-		block * KK[nP+1];
-		bool * bs[nP+1];
+    block ***Ms = new block**[nP+1];
+		block ** Ks = new block*[2];
+		block ** KK = new block*[nP+1];
+		bool ** bs = new bool*[nP+1];
 		Ks[0] = new block[ssp];
 		Ks[1] = new block[ssp];
 		for(int i = 1; i <= nP; ++i) {
 			bs[i] = new bool[ssp];
 			KK[i] = new block[ssp];
+			Ms[i] = new block*[nP+1];
 			for(int j = 1; j <= nP; ++j)
 				Ms[i][j] = new block[ssp];
 		}
@@ -257,7 +270,7 @@ class ABitMP { public:
 				io->flush(party2);
 				return false;
 			}));
-			res2.push_back(pool->enqueue([this, dgst, bs, Ms,  party2]() -> bool {
+      res2.push_back(pool->enqueue([this, dgst, bs, Ms,  party2]() -> bool {
 				Hash h;
 				io->recv_data(party2, bs[party2], ssp);
 				h.put(bs[party2], ssp);
@@ -331,7 +344,12 @@ class ABitMP { public:
 			delete[] KK[i];
 			for(int j = 1; j <= nP; ++j)
 				delete[] Ms[i][j];
+			delete[] Ms[i];
 		}
+		delete[] Ms;
+    delete[] Ks;
+    delete[] KK;
+    delete[] bs;
 	}
 };
 #endif //ABIT_MP_H__
