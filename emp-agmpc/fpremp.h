@@ -8,24 +8,26 @@
 #include "cmpc_config.h"
 
 using namespace emp;
-template<int nP>
+
 class FpreMP { public:
+  int nP;
 	ThreadPool *pool;
 	int party;
-	NetIOMP<nP> * io;
-	ABitMP<nP>* abit;
+	NetIOMP * io;
+	ABitMP* abit;
 	block Delta;
 	CRH * prps;
 	CRH * prps2;
 	PRG * prgs;
 	PRG prg;
 	int ssp;
-	FpreMP(NetIOMP<nP> * io[2], ThreadPool * pool, int party, int ssp = 40) {
+	FpreMP(NetIOMP * io[2], ThreadPool * pool, int party, int ssp = 40) {
+    nP = io[0]->nP;
 		this->party = party;
 		this->pool = pool;
 		this->io = io[0];
 		this ->ssp = ssp;
-		abit = new ABitMP<nP>(io[1], pool, party);
+		abit = new ABitMP(io[1], pool, party);
 		Delta = abit->Delta;
 		prps = new CRH[nP+1];
 		prps2 = new CRH[nP+1];
@@ -46,17 +48,18 @@ class FpreMP { public:
 			return 4;
 		else return 5;
 	}
-	void compute(block * MAC[nP+1], block * KEY[nP+1], bool * r, int length) {
+	void compute(block **MAC, block **KEY, bool * r, int length) {
 		int bucket_size = get_bucket_size(length);
-		block * tMAC[nP+1];
-		block * tKEY[nP+1];
-		block * tKEYphi[nP+1];
-		block * tMACphi[nP+1];
+		block **tMAC = new block*[nP+1];
+		block **tKEY = new block*[nP+1];
+		block **tKEYphi = new block*[nP+1];
+		block **tMACphi = new block*[nP+1];
 		block * phi;
-		block *X [nP+1];
+		block **X = new block*[nP+1];
 		bool *tr = new bool[length*bucket_size*3+3*ssp + 128];// 128 because iknp::recv_pre runs off end of array
 		phi = new block[length*bucket_size];
-		bool *s[nP+1], *e = new bool[length*bucket_size];
+		bool **s = new bool*[nP+1];
+    bool *e = new bool[length*bucket_size];
 		for(int i = 1; i <= nP; ++i) {
 			tMAC[i] = new block[length*bucket_size*3+3*ssp];
 			tKEY[i] = new block[length*bucket_size*3+3*ssp];
@@ -233,11 +236,11 @@ class FpreMP { public:
 		if(!cmpBlock(X[1], X[2], ssp)) error("AND check");
 	
 		//land -> and	
-		block S = sampleRandom<nP>(io, &prg, pool, party);
+		block S = sampleRandom(io, &prg, pool, party);
 
 		int * ind = new int[length*bucket_size];
 		int *location = new int[length*bucket_size];
-		bool * d[nP+1];
+		bool **d = new bool*[nP+1];
 		for(int i = 1; i <= nP; ++i)
 			d[i] = new bool[length*(bucket_size-1)];
 		for(int i = 0; i < length*bucket_size; ++i)
@@ -325,7 +328,14 @@ class FpreMP { public:
 			delete[] s[i];
 			delete[] d[i];
 		}
+		delete[] tMAC;
+		delete[] tKEY;
+		delete[] tKEYphi;
+		delete[] tMACphi;
+		delete[] X;
 		delete[] s[0];
+		delete[] s;
+		delete[] d;
 	}
 
 	//TODO: change to justGarble
@@ -366,7 +376,7 @@ class FpreMP { public:
 		return (tmp&0x1) != (res&0x1);
 	}	
 
-	void check_MAC_phi(block * MAC[nP+1], block * KEY[nP+1], block * phi, bool * r, int length) {
+	void check_MAC_phi(block **MAC, block **KEY, block * phi, bool * r, int length) {
 		block * tmp = new block[length];
 		block *tD = new block[length];
 		for(int i = 1; i <= nP; ++i) for(int j = 1; j <= nP; ++j) if (i < j) {

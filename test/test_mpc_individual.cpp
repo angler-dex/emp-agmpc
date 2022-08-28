@@ -7,24 +7,23 @@ const string circuit_file_location = macro_xstr(EMP_CIRCUIT_PATH);
 static char out3[] = "92b404e556588ced6c1acd4ebf053f6809f73a93";//bafbc2c87c33322603f38e06c3e0f79c1f1b1475";
 
 int main(int argc, char** argv) {
-	int port, party;
+  int port, party;
 	parse_party_and_port(argv, &party, &port);
 
-	const static int nP = 3;
 	int start[] = {0, 0, 32, 64};
 	int end[] = {0, 32, 64, 512};
 	int start2[] = {0, 0, 64, 64};
 	int end2[] = {0, 64, 65, 512};
 
-	NetIOMP<nP> io(party, port);
-	NetIOMP<nP> io2(party, port+2*(nP+1)*(nP+1)+1);
-	NetIOMP<nP> *ios[2] = {&io, &io2};
-	ThreadPool pool(4);	
+	ThreadPool pool(4);
+	NetIOMP io(party, &pool);
+	NetIOMP io2(party, &pool);
+	NetIOMP *ios[2] = {&io, &io2};
 	string file = circuit_file_location+"/AES-non-expanded.txt";
 	file = circuit_file_location+"/sha-1.txt";
 	BristolFormat cf(file.c_str());
 
-	CMPC<nP>* mpc = new CMPC<nP>(ios, &pool, party, &cf);
+	CMPC* mpc = new CMPC(ios, &pool, party, &cf);
 	cout <<"Setup:\t"<<party<<"\n";
 
 	mpc->function_independent();
